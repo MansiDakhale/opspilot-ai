@@ -6,6 +6,8 @@ from app.api.auth import router as auth_router
 
 from app.api.rag import router as rag_router
 
+from app.api.agents import router as agent_router
+
 from app.db.database import Base, engine
 
 from app.models.user import User
@@ -24,6 +26,12 @@ app.include_router(
 )
 
 app.include_router(rag_router, prefix="/rag", tags=["RAG Infrastructure"])
+
+app.include_router(
+    agent_router,
+    prefix="/agents",
+    tags=["Agents"]
+)
 
 @app.get("/")
 def read_root():
