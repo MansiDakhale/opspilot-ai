@@ -1,6 +1,8 @@
 import os
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
+from app.workers.tasks import process_pdf_task
+from celery.result import AsyncResult
 from app.services.rag_service import ingest_pdf, retrieve_docs
 from app.services.llm_service import generate_response
 
@@ -22,10 +24,14 @@ async def upload_pdf(file: UploadFile = File(...)):
         content = await file.read()
         f.write(content)
         
-    chunks = ingest_pdf(file_path)
+    task = process_pdf_task.delay(
+        file_path
+    )
+
     return {
-        "filename": file.filename,
-        "chunks_created": chunks
+        "message": "PDF processing started",
+        "task_id": task.id,
+        "filename": file.filename
     }
 
 @router.post("/query")
@@ -52,4 +58,15 @@ def query_rag(request: QueryRequest):
     return {
         "response": response,
         "sources_found": len(docs)
+    }
+
+@router.get("/task/{task_id}")
+def get_task_status(task_id: str):
+
+    task_result = AsyncResult(task_id)
+
+    return {
+        "task_id": task_id,
+        "status": task_result.status,
+        "result": task_result.result
     }
