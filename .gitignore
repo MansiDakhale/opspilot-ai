@@ -1,5 +1,5 @@
 # Python
-venv/
+opsvenv/
 __pycache__/
 *.pyc
 
@@ -14,6 +14,13 @@ node_modules/
 
 # OS
 .DS_Store
+Thumbs.db
 
 # Logs
 *.log
+
+# ChromaDB
+backend/chroma_db/
+
+# Uploaded docs
+backend/uploads/
