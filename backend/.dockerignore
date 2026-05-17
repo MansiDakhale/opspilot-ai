@@ -1,8 +1,46 @@
-opsvenv
-venv
-__pycache__
+# Python cache
+__pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+opsvenv/
+
+# Environment variables
 .env
+
+# Git
 .git
+.gitignore
+
+# IDE/editor
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# ChromaDB persistent storage
 chroma_db/
+
+# Uploaded documents
 uploads/
+
+# Logs
+*.log
+
+# Pytest / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
