@@ -1,5 +1,6 @@
-venv/
-.venv/
-__pycache__/
+opsvenv
+venv
+__pycache__
 *.pyc
-.git/
+.env
+.git

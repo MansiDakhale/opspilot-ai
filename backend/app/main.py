@@ -4,6 +4,8 @@ from app.api.chat import router as chat_router
 
 from app.api.auth import router as auth_router
 
+from app.api.rag import router as rag_router
+
 from app.db.database import Base, engine
 
 from app.models.user import User
@@ -20,6 +22,8 @@ app.include_router(
     prefix="/auth",
     tags=["Authentication"]
 )
+
+app.include_router(rag_router, prefix="/rag", tags=["RAG Infrastructure"])
 
 @app.get("/")
 def read_root():
