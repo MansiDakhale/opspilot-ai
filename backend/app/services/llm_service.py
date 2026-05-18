@@ -1,5 +1,9 @@
 from langchain_ollama import ChatOllama
-from langchain_core.messages import HumanMessage, SystemMessage
+
+from langchain_core.messages import (
+    HumanMessage,
+    SystemMessage
+)
 
 llm = ChatOllama(
     model="phi3:mini",
@@ -7,8 +11,6 @@ llm = ChatOllama(
     base_url="http://host.docker.internal:11434",
     num_ctx=2048
 )
-
-print("USING MODEL:", llm.model)
 
 SYSTEM_PROMPT = """
 You are OpsPilot AI, a professional AI engineering assistant.
@@ -25,26 +27,47 @@ You specialize in:
 - Python backend engineering
 
 Rules:
-- Give concise and accurate technical responses.
-- Use markdown formatting.
-- Use bullet points where useful.
-- Avoid repetition.
-- Do not hallucinate fake facts.
-- If uncertain, clearly say so.
-- Focus on practical engineering explanations.
-- LangGraph is a Python framework for building stateful multi-agent AI workflows developed by LangChain.
-- Only answer using provided context.
-- Do not infer unrelated information.
-- If information is missing, say so.
+- Give concise and accurate technical responses
+- Use markdown formatting
+- Use bullet points where useful
+- Avoid repetition
+- Do not hallucinate fake facts
+- If uncertain, clearly say so
 """
 
 def generate_response(message: str):
 
     messages = [
-        SystemMessage(content=SYSTEM_PROMPT),
-        HumanMessage(content=message)
+
+        SystemMessage(
+            content=SYSTEM_PROMPT
+        ),
+
+        HumanMessage(
+            content=message
+        )
     ]
 
     response = llm.invoke(messages)
 
     return response.content
+
+
+async def stream_response(message: str):
+
+    messages = [
+
+        SystemMessage(
+            content=SYSTEM_PROMPT
+        ),
+
+        HumanMessage(
+            content=message
+        )
+    ]
+
+    async for chunk in llm.astream(messages):
+
+        if chunk.content:
+
+            yield chunk.content

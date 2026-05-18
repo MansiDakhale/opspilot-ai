@@ -5,6 +5,8 @@ from app.workers.tasks import process_pdf_task
 from celery.result import AsyncResult
 from app.services.rag_service import ingest_pdf, retrieve_docs
 from app.services.llm_service import generate_response
+from fastapi.responses import StreamingResponse
+from app.services.llm_service import stream_response
 
 router = APIRouter()
 UPLOAD_DIR = "uploads"
@@ -97,6 +99,53 @@ def query_rag(request: QueryRequest):
         "sources_found": len(docs),
         "sources": sources
     }
+
+@router.post("/stream")
+async def stream_rag(request: QueryRequest):
+
+    docs = retrieve_docs(request.query)
+
+    if not docs:
+
+        return {
+            "response": "No matching documentation context found."
+        }
+
+    context = "\n\n".join(
+        [doc.page_content for doc in docs]
+    )
+
+    context = context[:4000]
+
+    prompt = f"""
+    You are OpsPilot AI, a professional AI engineering assistant.
+
+    Answer the user's question using ONLY the retrieved context.
+
+    Rules:
+    - Be concise and factual
+    - Use bullet points when helpful
+    - If the answer is not in the context, say:
+      "I could not find this information in the uploaded documents."
+    - Do not hallucinate information
+
+    Retrieved Context:
+    {context}
+
+    User Question:
+    {request.query}
+    """
+
+    async def generate():
+
+        async for chunk in stream_response(prompt):
+
+            yield chunk
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/plain"
+    )
 
 @router.get("/task/{task_id}")
 def get_task_status(task_id: str):
