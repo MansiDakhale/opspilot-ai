@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+import logging
 
 from app.api.chat import router as chat_router
 
@@ -14,7 +15,18 @@ from app.models.user import User
 
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.models.chat import ChatSession
+from app.models.chat import ChatMessage
+
+from app.api.chat_history import router as history_router
+
 Base.metadata.create_all(bind=engine)
+
+# Configure basic logging once at application startup
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
 
 app = FastAPI(title="OpsPilot AI Backend")
 
@@ -41,6 +53,12 @@ app.include_router(
     agent_router,
     prefix="/agents",
     tags=["Agents"]
+)
+
+app.include_router(
+    history_router,
+    prefix="/history",
+    tags=["History"]
 )
 
 @app.get("/")

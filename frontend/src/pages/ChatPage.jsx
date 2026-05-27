@@ -7,7 +7,34 @@ function ChatPage() {
     const [message, setMessage] = useState("")
     const [response, setResponse] = useState("")
     const [sources, setSources] = useState([])
+    const [verification, setVerification] = useState(null)
+    const [sessionId, setSessionId] = useState(null)
     const [loading, setLoading] = useState(false)
+
+    async function createSession() {
+
+        try {
+
+            const res = await fetch(
+                "http://localhost:8000/history/session",
+                {
+                    method: "POST"
+                }
+            )
+
+            const data = await res.json()
+
+            setSessionId(data.session_id)
+
+            return data.session_id
+
+        } catch (error) {
+
+            console.error(error)
+
+            return null
+        }
+    }
 
     async function sendMessage() {
 
@@ -18,65 +45,20 @@ function ChatPage() {
         setResponse("")
 
         setSources([])
+
+        setVerification(null)
         
         try {
 
-            const res = await fetch(
-                "http://localhost:8000/rag/stream",
-                {
-                    method: "POST",
+            let activeSessionId = sessionId
 
-                headers: {
-                    "Content-Type": "application/json"
-                },
+            if (!activeSessionId) {
 
-                body: JSON.stringify({
-                    query: message
-                })
+                activeSessionId = await createSession()
             }
-        )
-
-        const reader = res.body.getReader()
-
-        const decoder = new TextDecoder()
-
-        while (true) {
-
-            const { done, value } =
-                await reader.read()
-
-            if (done) {
-
-                await fetchSources()
-
-                break
-            } 
-
-            const chunk =
-                decoder.decode(value)
-
-            setResponse(prev => prev + chunk)
-        }
-
-    } catch (error) {
-
-        console.error(error)
-
-        setResponse(
-            "Error retrieving response."
-        )
-    } finally {
-
-            setLoading(false)
-        }
-    }
-
-    async function fetchSources() {
-
-        try {
 
             const res = await fetch(
-                "http://localhost:8000/rag/query",
+                "http://localhost:8000/rag/query/verify",
                 {
                     method: "POST",
 
@@ -85,18 +67,30 @@ function ChatPage() {
                     },
 
                     body: JSON.stringify({
-                        query: message
+                        query: message,
+                        session_id: activeSessionId
                     })
                 }
             )
 
             const data = await res.json()
 
+            if (data.response) setResponse(data.response)
+
             setSources(data.sources || [])
+
+            setVerification(data.verification || null)
 
         } catch (error) {
 
             console.error(error)
+
+            setResponse(
+                "Error retrieving response."
+            )
+        } finally {
+
+            setLoading(false)
         }
     }
 
@@ -240,8 +234,7 @@ function ChatPage() {
                                                         mb-2
                                                     ">
 
-                                                        {source.source}
-                                                        {" "} | Page: {source.page}
+                                                        [#{source.id}] {source.source} | Page: {source.page}
 
                                                     </div>
 
@@ -262,6 +255,55 @@ function ChatPage() {
                                     </div>
 
                                 </div>
+                            )
+                        }
+
+                        {/* Verification */}
+
+                        {
+                            verification && (
+
+                                <div className="mt-8">
+
+                                    <h2 className="text-xl font-semibold mb-4 text-white">Verification</h2>
+
+                                    <div className="bg-[#1F2937] p-4 rounded-xl border border-gray-700">
+
+                                        <div className="text-gray-300 mb-2">Verified: {verification.verified ? 'Yes' : 'No'}</div>
+
+                                        {
+                                            verification.issues && verification.issues.length > 0 && (
+
+                                                <div className="text-sm text-gray-300">
+
+                                                    <div className="font-semibold mb-2">Issues:</div>
+
+                                                    <ul className="list-disc pl-5">
+
+                                                        {verification.issues.map((iss, i) => (
+
+                                                            <li key={i} className="mb-2">
+
+                                                                <div className="font-medium">{iss.claim}</div>
+
+                                                                <div className="text-xs text-gray-400">Supporting sources: {iss.supporting_sources && iss.supporting_sources.length > 0 ? iss.supporting_sources.join(', ') : 'None'}</div>
+
+                                                            </li>
+
+                                                        ))}
+
+                                                    </ul>
+
+                                                </div>
+
+                                            )
+
+                                        }
+
+                                    </div>
+
+                                </div>
+
                             )
                         }
 

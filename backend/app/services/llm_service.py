@@ -7,9 +7,9 @@ from langchain_core.messages import (
 
 llm = ChatOllama(
     model="phi3:mini",
-    temperature=0.3,
+    temperature=0,
     base_url="http://host.docker.internal:11434",
-    num_ctx=2048
+    num_ctx=4096
 )
 
 SYSTEM_PROMPT = """
