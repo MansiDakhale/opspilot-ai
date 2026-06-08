@@ -1,0 +1,31 @@
+services:
+
+  backend:
+    build:
+      context: ./backend
+    image: opspilot-backend:latest
+    working_dir: /app
+    user: root
+    ports:
+      - "8000:8000"
+    volumes:
+      - /home/ubuntu/uploads:/app/uploads
+      - /home/ubuntu/chroma_db:/app/chroma_db
+    env_file:
+      - /home/ubuntu/.env
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+
+  worker:
+    image: opspilot-backend:latest
+    depends_on:
+      - backend
+    working_dir: /app
+    user: root
+    command: celery -A app.workers.tasks worker --loglevel=info
+    volumes:
+      - /home/ubuntu/uploads:/app/uploads
+      - /home/ubuntu/chroma_db:/app/chroma_db
+    env_file:
+      - /home/ubuntu/.env
+    restart: unless-stopped

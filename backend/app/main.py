@@ -1,4 +1,6 @@
+import os
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 import logging
 
 from app.api.chat import router as chat_router
@@ -17,10 +19,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.models.chat import ChatSession
 from app.models.chat import ChatMessage
+from app.models.memory import UserMemory
 
 from app.api.chat_history import router as history_router
 
 Base.metadata.create_all(bind=engine)
+
+# Ensure the reports directory exists
+os.makedirs("uploads/reports", exist_ok=True)
 
 # Configure basic logging once at application startup
 logging.basicConfig(
@@ -60,6 +66,9 @@ app.include_router(
     prefix="/history",
     tags=["History"]
 )
+
+# Serve the reports directory so the frontend can download them
+app.mount("/reports", StaticFiles(directory="uploads/reports"), name="reports")
 
 @app.get("/")
 def read_root():

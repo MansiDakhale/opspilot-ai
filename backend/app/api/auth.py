@@ -87,5 +87,9 @@ def login(
 
     return {
         "access_token": access_token,
-        "token_type": "bearer"
+        "token_type": "bearer",
+        "user": {
+            "email": db_user.email,
+            "full_name": db_user.full_name
+        }
     }

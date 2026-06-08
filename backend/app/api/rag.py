@@ -1,297 +1,260 @@
 import os
-from pathlib import Path
-from fastapi import APIRouter, UploadFile, File, HTTPException
-from pydantic import BaseModel
-from app.workers.tasks import process_pdf_task
-from celery.result import AsyncResult
-from app.services.rag_service import ingest_pdf, retrieve_docs
-from app.services.llm_service import generate_response
 import json
+from pathlib import Path
+
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-from app.services.llm_service import stream_response
-
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from fastapi import Depends
 
+from app.workers.tasks import process_pdf_task
+from app.workers.celery_app import celery
+from app.services.rag_service import ingest_pdf, retrieve_docs, build_context
+from app.services.llm_service import generate_response, stream_response
 from app.db.session import get_db
-
 from app.models.chat import ChatMessage
 
 router = APIRouter()
+
+# ---------------------------------------------------------------------------
+# Upload directory
+# ---------------------------------------------------------------------------
+
 APP_DATA_DIR = Path(
-    os.getenv(
-        "APP_DATA_DIR",
-        Path(__file__).resolve().parents[2]
-    )
+    os.getenv("APP_DATA_DIR", Path(__file__).resolve().parents[2])
 )
 UPLOAD_DIR = APP_DATA_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+
+# ---------------------------------------------------------------------------
+# Request schemas
+# ---------------------------------------------------------------------------
+
 class QueryRequest(BaseModel):
+    query:       str
+    session_id:  int | None = None
+    # Optional: scope retrieval to a single document (stem of filename, e.g. "my_report")
+    document_id: str | None = None
 
-    query: str
 
-    session_id: int | None = None
+# ---------------------------------------------------------------------------
+# Shared prompt builders
+# ---------------------------------------------------------------------------
+
+_ANSWER_SYSTEM = """You are OpsPilot AI, a professional AI engineering assistant.
+
+Answer the user's question using ONLY the retrieved context below.
+For every factual claim, append an inline citation like [1] or [2].
+End your answer with a brief "SOURCES:" section listing source id, filename, and page.
+
+Rules:
+- Be concise and factual.
+- Use bullet points where helpful.
+- If the answer is NOT in the context, reply exactly:
+  "I could not find this information in the uploaded documents."
+- Do NOT hallucinate or guess."""
+
+
+def _build_answer_prompt(context: str, query: str) -> str:
+    return (
+        f"{_ANSWER_SYSTEM}\n\n"
+        f"Retrieved Context (numbered):\n{context}\n\n"
+        f"User Question:\n{query}"
+    )
+
+
+_VERIFY_SYSTEM = """You are a fact-verifier. Given an Answer and numbered source documents,
+check each factual claim in the Answer against the sources.
+
+Output ONLY a valid JSON object with:
+{
+  "verified": <bool>,
+  "issues": [
+    {
+      "claim": "<claim text>",
+      "supporting_sources": [<list of source ids>],
+      "missing": <bool>
+    }
+  ]
+}
+No extra text outside the JSON."""
+
+
+def _build_verify_prompt(context: str, answer: str) -> str:
+    return (
+        f"{_VERIFY_SYSTEM}\n\n"
+        f"Retrieved Context:\n{context}\n\n"
+        f"Answer:\n{answer}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
 
 @router.post("/upload")
 async def upload_pdf(file: UploadFile = File(...)):
-    if not file.filename.endswith('.pdf'):
+    """Upload a PDF; triggers async Celery ingestion task."""
+    if not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are supported.")
-        
+
     file_path = UPLOAD_DIR / Path(file.filename).name
-    
+
     with open(file_path, "wb") as f:
-        content = await file.read()
-        f.write(content)
-        
-    task = process_pdf_task.delay(
-        str(file_path)
-    )
+        f.write(await file.read())
+
+    task = process_pdf_task.delay(str(file_path))
 
     return {
-        "message": "PDF processing started",
-        "task_id": task.id,
-        "filename": file.filename
+        "message":     "PDF processing started",
+        "task_id":     task.id,
+        "filename":    file.filename,
+        "document_id": Path(file.filename).stem,   # return so frontend can scope queries
     }
+
 
 @router.post("/query")
 def query_rag(request: QueryRequest):
+    """Retrieve context → generate a cited answer (blocking)."""
+    docs = retrieve_docs(request.query, document_id=request.document_id)
 
-    docs = retrieve_docs(request.query)
-
-    if len(docs) == 0:
-
+    if not docs:
         return {
-            "response":
-            "No reliable context was found in the uploaded documents.",
-
-            "sources": []
+            "response":      "No reliable context was found in the uploaded documents.",
+            "sources_found": 0,
+            "sources":       [],
         }
 
-    # Build numbered context pieces so the model can cite sources like [1]
-    numbered_contexts = []
-    sources = []
+    context, sources = build_context(docs)
+    prompt           = _build_answer_prompt(context, request.query)
 
-    for idx, doc in enumerate(docs, start=1):
-
-        snippet = doc.page_content.strip()
-
-        numbered_contexts.append(f"[SOURCE {idx}]\n{snippet}")
-
-        sources.append({
-            "id": idx,
-            "content": snippet[:300],
-            "source": doc.metadata.get("source", "Unknown"),
-            "page": doc.metadata.get("page", "N/A"),
-            "relevance_score": doc.metadata.get("relevance_score")
-        })
-
-    context = "\n\n".join(numbered_contexts)
-    context = context[:4000]
-
-    prompt = f"""
-    You are OpsPilot AI, a professional AI engineering assistant.
-
-    Answer the user's question using ONLY the retrieved context below. For every factual
-    claim you make, append an inline citation in square brackets referencing the
-    numbered source (for example: [1], [2]). At the end of your answer include a
-    brief "SOURCES:" section that lists the source id, filename and page.
-
-    Rules:
-    - Be concise and factual.
-    - Use bullet points when helpful.
-    - Do NOT hallucinate. If you cannot answer from the provided context, reply exactly:
-      "I could not find this information in the uploaded documents."
-    - Do NOT provide internal chain-of-thought or hidden reasoning.
-
-    Retrieved Context (numbered):
-    {context}
-
-    User Question:
-    {request.query}
-    """
-
-    response = generate_response(prompt)
+    try:
+        response = generate_response(prompt)
+    except RuntimeError as exc:
+        return {"response": str(exc), "sources_found": len(docs), "sources": sources}
 
     return {
-        "response": response,
+        "response":      response,
         "sources_found": len(docs),
-        "sources": sources
+        "sources":       sources,
     }
+
 
 @router.post("/stream")
 async def stream_rag(request: QueryRequest, db: Session = Depends(get_db)):
-
+    """Retrieve context → stream the answer token-by-token."""
+    # Persist user message
     if request.session_id:
-
-        user_message = ChatMessage(
+        db.add(ChatMessage(
             session_id=request.session_id,
             role="user",
-            content=request.query
-        )
-
-        db.add(user_message)
-
+            content=request.query,
+        ))
         db.commit()
-    
-    docs = retrieve_docs(request.query)
+
+    docs = retrieve_docs(request.query, document_id=request.document_id)
 
     if not docs:
+        async def _no_context():
+            yield "No matching documentation context found."
+        return StreamingResponse(_no_context(), media_type="text/plain")
 
-        return {
-            "response": "No matching documentation context found."
-        }
+    context, _ = build_context(docs)
+    prompt      = _build_answer_prompt(context, request.query)
 
-    numbered_contexts = []
-
-    for idx, doc in enumerate(docs, start=1):
-
-        numbered_contexts.append(
-            f"[SOURCE {idx} | {doc.metadata.get('source', 'Unknown')} | "
-            f"Page: {doc.metadata.get('page', 'N/A')}]\n"
-            f"{doc.page_content.strip()}"
-        )
-
-    context = "\n\n".join(numbered_contexts)
-
-    context = context[:4000]
-
-    prompt = f"""
-    You are OpsPilot AI, a professional AI engineering assistant.
-
-    Answer the user's question using ONLY the retrieved context. Cite the source id
-    for factual claims using square brackets, for example [1].
-
-    Rules:
-    - Be concise and factual
-    - Use bullet points when helpful
-    - If the answer is not in the context, say:
-      "I could not find this information in the uploaded documents."
-    - Do not hallucinate information
-
-    Retrieved Context:
-    {context}
-
-    User Question:
-    {request.query}
-    """
+    # Collect full response so we can persist it after streaming
+    full_response_parts: list[str] = []
 
     async def generate():
-
         async for chunk in stream_response(prompt):
-
+            full_response_parts.append(chunk)
             yield chunk
 
-    return StreamingResponse(
-        generate(),
-        media_type="text/plain"
-    )
+        # Persist AI response after stream completes
+        if request.session_id:
+            db.add(ChatMessage(
+                session_id=request.session_id,
+                role="assistant",
+                content="".join(full_response_parts),
+            ))
+            db.commit()
+
+    return StreamingResponse(generate(), media_type="text/plain")
 
 
 @router.post("/query/verify")
 def verify_rag(request: QueryRequest):
-
-    docs = retrieve_docs(request.query)
+    """Retrieve → answer → verify each claim against sources."""
+    docs = retrieve_docs(request.query, document_id=request.document_id)
 
     if not docs:
-
         return {
-            "response": "No matching documentation context found.",
-            "verification": {"verified": False, "issues": []},
-            "sources": []
+            "response":      "No matching documentation context found.",
+            "verification":  {"verified": False, "issues": []},
+            "sources_found": 0,
+            "sources":       [],
         }
 
-    # Build numbered contexts and sources (same as /query)
-    numbered_contexts = []
-    sources = []
+    context, sources = build_context(docs)
 
-    for idx, doc in enumerate(docs, start=1):
+    # Step 1: Generate answer
+    try:
+        answer = generate_response(_build_answer_prompt(context, request.query))
+    except RuntimeError as exc:
+        return {
+            "response": str(exc),
+            "verification": {
+                "verified": False,
+                "issues": [{"claim": str(exc), "supporting_sources": [], "missing": True}],
+            },
+            "sources_found": len(docs),
+            "sources": sources,
+        }
 
-        snippet = doc.page_content.strip()
-
-        numbered_contexts.append(f"[SOURCE {idx}]\n{snippet}")
-
-        sources.append({
-            "id": idx,
-            "content": snippet[:300],
-            "source": doc.metadata.get("source", "Unknown"),
-            "page": doc.metadata.get("page", "N/A"),
-            "relevance_score": doc.metadata.get("relevance_score")
+    # Step 2: Verify claims
+    try:
+        verify_raw = generate_response(_build_verify_prompt(context, answer))
+    except RuntimeError as exc:
+        verify_raw = json.dumps({
+            "verified": False,
+            "issues": [{"claim": str(exc), "supporting_sources": [], "missing": True}],
         })
 
-    context = "\n\n".join(numbered_contexts)
-    context = context[:4000]
-
-    answer_prompt = f"""
-    You are OpsPilot AI, a professional AI engineering assistant.
-
-    Answer the user's question using ONLY the retrieved context below. For every factual
-    claim you make, append an inline citation in square brackets referencing the
-    numbered source (for example: [1], [2]). At the end of your answer include a
-    brief "SOURCES:" section that lists the source id, filename and page.
-
-    Rules:
-    - Be concise and factual.
-    - Use bullet points when helpful.
-    - Do NOT hallucinate. If you cannot answer from the provided context, reply exactly:
-      "I could not find this information in the uploaded documents."
-    - Do NOT provide internal chain-of-thought or hidden reasoning.
-
-    Retrieved Context (numbered):
-    {context}
-
-    User Question:
-    {request.query}
-    """
-
-    response = generate_response(answer_prompt)
-
-    # Verification prompt: check each factual claim in the answer and map to sources
-    verify_prompt = f"""
-    You are a verifier. You will be given an "Answer" and a numbered set of source
-    documents. For each distinct factual claim in the Answer, determine whether the
-    claim is directly supported by one or more of the provided sources. Output ONLY
-    a JSON object with the keys:
-
-    - verified: boolean (true if every factual claim is supported by at least one source)
-    - issues: list of objects with keys: claim (string), supporting_sources (list of ids), missing (boolean)
-
-    Use the Retrieved Context below to find supporting evidence. If a claim cannot be
-    supported, set "missing": true and "supporting_sources": [].
-
-    Provide only valid JSON.
-
-    Retrieved Context:
-    {context}
-
-    Answer:
-    {response}
-    """
-
-    verify_text = generate_response(verify_prompt)
-
-    verification = None
-
     try:
-        verification = json.loads(verify_text)
+        # Strip markdown formatting if present
+        clean_json = verify_raw.strip()
+        if clean_json.startswith("```json"):
+            clean_json = clean_json[7:]
+        if clean_json.startswith("```"):
+            clean_json = clean_json[3:]
+        if clean_json.endswith("```"):
+            clean_json = clean_json[:-3]
+        clean_json = clean_json.strip()
+        
+        verification = json.loads(clean_json)
     except Exception:
-        # If the verifier did not return strict JSON, include raw text
-        verification = {"raw": verify_text}
+        verification = {"raw": verify_raw}
 
     return {
-        "response": response,
-        "verification": verification,
+        "response":      answer,
+        "verification":  verification,
         "sources_found": len(docs),
-        "sources": sources
+        "sources":       sources,
     }
+
 
 @router.get("/task/{task_id}")
 def get_task_status(task_id: str):
+    """Poll a Celery ingestion task."""
+    task_result = celery.AsyncResult(task_id)
+    result      = task_result.result
 
-    task_result = AsyncResult(task_id)
+    if isinstance(result, Exception):
+        result = {"error": str(result)}
 
     return {
         "task_id": task_id,
-        "status": task_result.status,
-        "result": task_result.result
+        "status":  task_result.status,
+        "result":  result,
     }

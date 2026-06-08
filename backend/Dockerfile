@@ -15,6 +15,7 @@ RUN apt-get update \
 	   gcc \
 	   git \
 	   curl \
+	   tesseract-ocr \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Upgrade pip tooling before installing requirements

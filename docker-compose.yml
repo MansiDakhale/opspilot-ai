@@ -3,6 +3,7 @@ services:
   backend:
     build: ./backend
     working_dir: /app
+    user: root
 
     ports:
       - "8000:8000"
@@ -21,6 +22,8 @@ services:
 
     env_file:
       - ./backend/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8000/ || exit 1"]
       interval: 10s
@@ -57,11 +60,16 @@ services:
   worker:
     build: ./backend
     working_dir: /app
+    user: root
     command: celery -A app.workers.tasks worker --loglevel=info
     volumes:
       - ./backend:/app
       - ./backend/uploads:/app/uploads
       - ./backend/chroma_db:/app/chroma_db
+    env_file:
+      - ./backend/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - redis
       - postgres
