@@ -1,12 +1,12 @@
-# 🚀 OpsPilot AI
+#  OpsPilot AI
 
 > **An AI-powered operations assistant** that combines RAG (Retrieval-Augmented Generation), multi-agent orchestration, and an intuitive chat interface to help teams automate and accelerate DevOps workflows.
 
-🌐 **Live Demo:** [http://opspilot-ai-frontend.s3-website.ap-south-1.amazonaws.com/](http://opspilot-ai-frontend.s3-website.ap-south-1.amazonaws.com/)
+ **Live Demo:** [http://opspilot-ai-frontend.s3-website.ap-south-1.amazonaws.com/](http://opspilot-ai-frontend.s3-website.ap-south-1.amazonaws.com/)
 
 ---
 
-## 📋 Table of Contents
+##  Table of Contents
 
 - [Overview](#overview)
 - [Features](#features)
@@ -24,30 +24,30 @@
 
 ---
 
-## 📖 Overview
+##  Overview
 
 OpsPilot AI is a full-stack intelligent assistant built for engineering and operations teams. It leverages a **LangGraph-based multi-agent pipeline** to handle complex queries, generate reports, write scripts, retrieve context from uploaded documents, and maintain conversational memory — all from a single chat interface.
 
 ---
 
-## ✨ Features
+##  Features
 
 | Feature | Description |
 |---|---|
-| 💬 **AI Chat** | Real-time chat powered by LLM with streaming support |
-| 🧠 **Memory Agent** | Remembers user preferences and past interactions |
-| 📄 **RAG Pipeline** | Upload PDFs/docs and query them with semantic search (ChromaDB + HuggingFace Embeddings) |
-| 🗂️ **Planner Agent** | Breaks complex tasks into structured step-by-step plans |
-| 💻 **Coder Agent** | Generates shell scripts, Python code, and automation snippets |
-| 📊 **Reporting Agent** | Produces downloadable reports from conversations |
-| 🔍 **Retrieval Agent** | Fetches relevant context from the knowledge base |
-| 🕓 **Chat History** | Persistent conversation sessions per user |
-| 🔐 **Auth** | JWT-based user authentication (register / login) |
-| ⚙️ **Async Workers** | Celery + Redis for background task processing |
+|  **AI Chat** | Real-time chat powered by LLM with streaming support |
+|  **Memory Agent** | Remembers user preferences and past interactions |
+|  **RAG Pipeline** | Upload PDFs/docs and query them with semantic search (ChromaDB + HuggingFace Embeddings) |
+|  **Planner Agent** | Breaks complex tasks into structured step-by-step plans |
+|  **Coder Agent** | Generates shell scripts, Python code, and automation snippets |
+|  **Reporting Agent** | Produces downloadable reports from conversations |
+|  **Retrieval Agent** | Fetches relevant context from the knowledge base |
+|  **Chat History** | Persistent conversation sessions per user |
+|  **Auth** | JWT-based user authentication (register / login) |
+|  **Async Workers** | Celery + Redis for background task processing |
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 ### Frontend
 - **React 19** + **Vite 8**
@@ -68,7 +68,7 @@ OpsPilot AI is a full-stack intelligent assistant built for engineering and oper
 
 ---
 
-## 🏗️ Architecture
+##  Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -96,7 +96,7 @@ OpsPilot AI is a full-stack intelligent assistant built for engineering and oper
 
 ---
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 
@@ -135,7 +135,7 @@ The frontend dev server runs at: `http://localhost:5173`
 
 ---
 
-## 🔧 Environment Variables
+##  Environment Variables
 
 Create a `backend/.env` file with the following keys:
 
@@ -161,7 +161,7 @@ EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 
 ---
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 opspilot-ai/
@@ -206,7 +206,7 @@ opspilot-ai/
 
 ---
 
-## 📡 API Endpoints
+##  API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -223,7 +223,7 @@ opspilot-ai/
 
 ---
 
-## ☁️ Deployment
+##  Deployment
 
 ### Frontend → AWS S3
 The frontend is built with Vite and deployed to an S3 bucket configured for static website hosting.
@@ -246,7 +246,7 @@ docker-compose -f docker-compose.prod.yml up --build -d
 
 ---
 
-## 🤝 Contributing
+##  Contributing
 
 Contributions are welcome! Please follow these steps:
 
@@ -258,12 +258,12 @@ Contributions are welcome! Please follow these steps:
 
 ---
 
-## 📄 License
+##  License
 
 This project is open source and available under the [MIT License](LICENSE).
 
 ---
 
 <div align="center">
-  <strong>Built with ❤️ by the OpsPilot AI team</strong>
+  <strong>Built with  by the OpsPilot AI team</strong>
 </div>
