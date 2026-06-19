@@ -265,5 +265,5 @@ This project is open source and available under the [MIT License](LICENSE).
 ---
 
 <div align="center">
-  <strong>Built with  by the OpsPilot AI team</strong>
+  <strong>Built by the OpsPilot AI team</strong>
 </div>
